@@ -520,6 +520,7 @@ static void ixxat_usb_free_usb_communication(struct ixxat_usb_device *dev)
 	struct net_device *netdev = dev->netdev;
 	u32 SkbIdx;
 	u32 UrbIdx;
+	u32 unused;
 
 	ix_trace_printk (">> ixxat_usb_free_usb_communication\n");
 
@@ -532,7 +533,7 @@ static void ixxat_usb_free_usb_communication(struct ixxat_usb_device *dev)
 	ixxat_usb_msg_free_idx(dev, 0xFFFFFFFF);
 
 	for (SkbIdx = 0; SkbIdx < dev->can.echo_skb_max; SkbIdx++)
-		can_free_echo_skb(netdev, SkbIdx);
+		can_free_echo_skb(netdev, SkbIdx, &unused);
 
 	for (UrbIdx = 0; UrbIdx < IXXAT_USB_MAX_TX_URBS; UrbIdx++) {
 		if (dev->tx_contexts[UrbIdx].urb_index != IXXAT_USB_FREE_ENTRY)
@@ -680,7 +681,7 @@ static int ixxat_usb_handle_canmsg(struct ixxat_usb_device *dev,
 				if (MsgIdx >= IXXAT_USB_MSG_IDX_OFFSET) {
 						MsgIdx -= IXXAT_USB_MSG_IDX_OFFSET;
 
-						can_get_echo_skb(netdev, MsgIdx);
+						can_get_echo_skb(netdev, MsgIdx, NULL);
 						ixxat_usb_msg_free_idx(dev, MsgIdx);
 				}
 			}
@@ -1170,7 +1171,7 @@ static void ixxat_usb_write_bulk_callback(struct urb *urb)
 	MsgIdx = context->msg_index;
 
 	if (MsgIdx < IXXAT_USB_MAX_MSGS) {
-		iSkbRet = can_get_echo_skb(netdev, MsgIdx);
+		iSkbRet = can_get_echo_skb(netdev, MsgIdx, NULL);
 
 		if (iSkbRet) {
 			netdev->stats.tx_bytes += iSkbRet;
@@ -1285,13 +1286,13 @@ static netdev_tx_t ixxat_usb_start_xmit(struct sk_buff *skb,
 				selfReception = true; // set self reception
 
 				if ((loopMode & IX_LOOPBACK) == IX_LOOPBACK) {
-					can_put_echo_skb(skb, netdev, MsgIdx);
+					can_put_echo_skb(skb, netdev, MsgIdx, 0);
 					echoSkb = true;
 				}
 			} else {
 				// handle the reception in the USB callback
 				if ((loopMode & IX_LOOPBACK) == IX_LOOPBACK) {
-					can_put_echo_skb(skb, netdev, MsgIdx);
+					can_put_echo_skb(skb, netdev, MsgIdx, 0);
 					echoSkb = true;
 				}
 				else {
@@ -1323,7 +1324,8 @@ static netdev_tx_t ixxat_usb_start_xmit(struct sk_buff *skb,
 			if (err) { // submit failed
 
 				// should only free if it's exist
-				can_free_echo_skb(netdev, MsgIdx);
+				u32 unused;
+				can_free_echo_skb(netdev, MsgIdx, &unused);
 				ixxat_usb_msg_free_idx(dev, MsgIdx);
 				ixxat_usb_rel_tx_context(dev, context);
 
